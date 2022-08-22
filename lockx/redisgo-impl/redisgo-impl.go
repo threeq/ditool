@@ -10,6 +10,10 @@ type RedisClientImplRedisGo struct {
 	conn redis.Conn
 }
 
+func NewRedisClientImplRedisGo(conn redis.Conn) *RedisClientImplRedisGo {
+	return &RedisClientImplRedisGo{conn: conn}
+}
+
 func (r *RedisClientImplRedisGo) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
 	return redis.Bool(r.conn.Do("setnx", key, value, expiration))
 }

@@ -10,6 +10,10 @@ type RedisClientImplGoRedis struct {
 	client *redis.Client
 }
 
+func NewRedisClientImplGoRedis(client *redis.Client) *RedisClientImplGoRedis {
+	return &RedisClientImplGoRedis{client: client}
+}
+
 func (r *RedisClientImplGoRedis) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
 	return r.client.SetNX(ctx, key, value, expiration).Result()
 }
