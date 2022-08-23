@@ -164,7 +164,7 @@ func (fsm *FSM) lockerEntityID(id string) string {
 	return LockPrefix + fsm.name + ":" + id
 }
 
-// --------------------------------------------------
+// --------------------------------------------------------------------------------
 
 func NewFSM(name string, Options ...Option) *FSM {
 	sm := &FSM{
@@ -181,7 +181,7 @@ func NewFSM(name string, Options ...Option) *FSM {
 
 type Option func(fsm *FSM)
 
-func ConcurrentLocker(lf lockx.LockerFactory) Option {
+func Locker(lf lockx.LockerFactory) Option {
 	return func(fsm *FSM) {
 		fsm.lockerFactory = lf
 	}

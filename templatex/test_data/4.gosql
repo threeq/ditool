@@ -1,0 +1,3 @@
+test 4
+{{template "def-1/def"}}
+{{template "def-2/def"}}
