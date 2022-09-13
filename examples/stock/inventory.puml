@@ -1,0 +1,124 @@
+@startuml
+'https:'plantuml.com/class-diagram
+
+class FreezeRequest {
+    id string
+    ChanID string
+    number int
+}
+
+
+
+FreezeFacade -left-> FreezeRequest
+FreezeFacade --> InventoryFactory
+class FreezeFacade {
+    factory InventoryFactory
+    Freeze(FreezeRequest[] req) (int, error)
+    UnFreeze(freezeID int) (int, error)
+}
+
+SkuFacade --> InventoryFactory
+class SkuFacade {
+}
+
+interface Inventory {
+    'Sync 同步总库存
+    '@return 返回总库存
+    Sync(total int) (int, error)
+    'Distribution 库存分布
+    '@return 返回库存分布
+    Distribution() Inventory
+    'Status 渠道剩余可售卖数量
+    '@Param freeId 冻结库存剩余数量
+    '              nil stockId 全部剩余数量
+    '				""  非冻结部分库存剩余数量
+    Status(chanID *string) *SaleChannelStatus
+    'Dec 扣减库存
+    Dec(chanID *string, number int) (Inventory, error)
+    'Inc 增加库存
+    Inc(chanID *string, number int) (Inventory, error)
+    'Channel 返回销售渠道
+    Channel(*string) *SaleChannel
+    'NewChannel 新建渠道
+    NewChannel(name *string, strategy SaleStrategy, from *SaleChannel) *SaleChannel
+}
+
+class SaleChannelStatus {
+	Max           int
+	SelfRemaining int
+	SelfSales     int
+	SelfHoldCfg   int
+	SelfHoldRem   int
+	ChildSales    int
+	ChildHoldRem  int
+	ChildHoldCfg  int
+}
+
+class SaleChannel {
+    strategy SaleStrategy
+    p        *SaleChannel
+    child    []*SaleChannel
+    sales    int
+    
+    Strategy() SaleStrategy
+    Status() *SaleChannelStatus
+    Parent() *SaleChannel
+    Child() []*SaleChannel
+}
+
+SaleChannelStatus <-- SaleChannel
+
+Inventory <|-- NormalInventory
+Inventory <|-- ComboInventory
+
+ComboInventory "1"*-left-"*" NormalInventory
+NormalInventory "1"*-down-"*" SaleChannel
+ComboInventory "1"*-down-"*" SaleChannel
+
+SaleChannel "1"*-- SaleChannel :parent
+
+SaleChannel "1"*-left-"*" SaleStrategy
+
+class NormalInventory {
+    channels map[string]*SaleChannel
+    root     *SaleChannel
+}
+
+class ComboInventory {
+    channels          map[string]*SaleChannel
+    comboChannelID    string
+    inventories       []Inventory
+    inventoriesWeight []int
+    root              *SaleChannel
+}
+
+interface SaleStrategy {
+    IsShared() bool
+    Limit() int
+    Hold() (int, int)
+    Sales() int
+    CompleteStatus() *SaleChannelStatus
+    Bind(*SaleChannel)
+    ResetLimit(total int)
+    ResetHold(n int)
+}
+SaleStrategy <|-- StoreShareStrategy
+SaleStrategy <|-- StoreAloneStrategy
+SaleStrategy <|-- StoreMixStrategy
+
+class StoreShareStrategy {
+    minSales int
+    maxSales int
+}
+
+class InventoryFactory {
+    repos Repository
+    builder(stockId string) Inventory
+}
+
+InventoryFactory --> Inventory
+InventoryFactory -right-> Repository
+
+interface Repository
+
+@enduml
