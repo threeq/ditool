@@ -1,12 +1,14 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"time"
 )
 
 var (
-	ErrTimeout = errors.New("retry timeout")
+	ErrTimeout    = errors.New("retry timeout")
+	ErrUserCancel = errors.New("user cancel")
 )
 
 type Executor struct {
@@ -15,7 +17,7 @@ type Executor struct {
 	trigger []Trigger
 }
 
-func (et *Executor) Run(task func() (any, error)) error {
+func (et *Executor) Run(ctx context.Context, task func() (any, error)) error {
 	running := func() (res any, err error, ex any) {
 		defer func() {
 			if ex = recover(); ex != nil {
@@ -35,6 +37,8 @@ func (et *Executor) Run(task func() (any, error)) error {
 				return ErrTimeout
 			}
 			select {
+			case <-ctx.Done():
+				return ErrUserCancel
 			case <-s:
 				return ErrTimeout
 			case <-et.wait.Wait():
@@ -48,7 +52,7 @@ func (et *Executor) Run(task func() (any, error)) error {
 
 }
 
-func (et *Executor) RunAsync(task func() (any, error)) {
+func (et *Executor) RunAsync(ctx context.Context, task func() (any, error)) {
 	// TODO implement me
 	panic("implement me")
 }
@@ -143,12 +147,12 @@ func (receiver *checkPanic) Check(res any, err error, ex any) bool {
 
 //-------------------------------------------------------------------
 
-func Running(task func() (any, error), options ...Option) error {
+func Running(ctx context.Context, task func() (any, error), options ...Option) error {
 	executor := NewExecutor(options...)
-	return executor.Run(task)
+	return executor.Run(ctx, task)
 }
 
-func RunningAsync(task func() (any, error), options ...Option) {
+func RunningAsync(ctx context.Context, task func() (any, error), options ...Option) {
 	executor := NewExecutor(options...)
-	executor.RunAsync(task)
+	executor.RunAsync(ctx, task)
 }

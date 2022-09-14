@@ -160,7 +160,7 @@ type redisLocker struct {
 // Lock 加锁
 func (rl *redisLocker) Lock() error {
 	value := rl.value
-	err := rl.meta.retry().Run(func() (any, error) {
+	err := rl.meta.retry().Run(rl.ctx, func() (any, error) {
 		ok, err := rl.obtain(rl.meta.key, value, rl.meta.ttl)
 		if err != nil {
 			return nil, err

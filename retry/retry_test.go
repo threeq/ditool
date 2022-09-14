@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -11,7 +12,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 
 	t.Run("正常调用", func(t *testing.T) {
 		runningNum := 0
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			return nil, nil
 		})
@@ -22,7 +23,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("默认不重试", func(t *testing.T) {
 		runningNum := 0
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			return nil, errors.New("112")
 		}, IfError(func(err error) bool {
@@ -34,7 +35,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("Error 重试", func(t *testing.T) {
 		runningNum := 0
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			return nil, errors.New("112")
 		}, IfError(func(err error) bool {
@@ -46,7 +47,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("Result 重试", func(t *testing.T) {
 		runningNum := 0
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			return "xxxx", errors.New("112")
 		}, IfResult(func(res any) bool {
@@ -55,7 +56,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 			WaitStrategy(IncrementingWaitStrategy(100, 20)))
 		assert.Equal(t, 4, runningNum)
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			return "bbbb", errors.New("112")
 		}, IfResult(func(res any) bool {
@@ -68,7 +69,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("Panic 重试", func(t *testing.T) {
 		runningNum := 0
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			panic("xxxx")
 		}, IfPanic(func(res any) bool {
@@ -77,7 +78,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 			WaitStrategy(ExponentialWaitStrategy(100, 20)))
 		assert.Equal(t, 4, runningNum)
 
-		Running(func() (any, error) {
+		Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			panic("12345")
 		}, IfPanic(func(res any) bool {
@@ -90,7 +91,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("重试超时-IncrementingWaitStrategy", func(t *testing.T) {
 		runningNum := 0
 
-		err := Running(func() (any, error) {
+		err := Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			panic("xxxx")
 		}, IfPanic(func(res any) bool {
@@ -104,7 +105,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("重试超时-ExponentialWaitStrategy", func(t *testing.T) {
 		runningNum := 0
 
-		err := Running(func() (any, error) {
+		err := Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			panic("xxxx")
 		}, IfPanic(func(res any) bool {
@@ -118,7 +119,7 @@ func TestExecuteTemplate_Run(t *testing.T) {
 	t.Run("重试超时-ExponentialWaitStrategy", func(t *testing.T) {
 		runningNum := 0
 
-		err := Running(func() (any, error) {
+		err := Running(context.Background(), func() (any, error) {
 			runningNum += 1
 			panic("xxxx")
 		}, IfPanic(func(res any) bool {
@@ -127,5 +128,25 @@ func TestExecuteTemplate_Run(t *testing.T) {
 			WaitStrategy(FibonacciWaitStrategy(10*time.Millisecond)))
 		assert.Equal(t, ErrTimeout, err)
 		assert.Equal(t, 6, runningNum)
+	})
+
+	t.Run("用户取消", func(t *testing.T) {
+		runningNum := 0
+
+		ctx, cancelFunc := context.WithCancel(context.Background())
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			cancelFunc()
+		}()
+		err := Running(ctx, func() (any, error) {
+			runningNum += 1
+			panic("xxxx")
+		}, IfPanic(func(res any) bool {
+			return "xxxx" == res.(string)
+		}), StopStrategy(StopAfterDelayStrategy(100*time.Millisecond)),
+			WaitStrategy(FibonacciWaitStrategy(10*time.Millisecond)))
+
+		assert.Equal(t, ErrUserCancel, err)
+		assert.Equal(t, 2, runningNum)
 	})
 }
