@@ -3,7 +3,10 @@ package stock
 import (
 	"github.com/stretchr/testify/assert"
 	"github.com/threeq/ditool/lockx"
+	"math/rand"
+	"sync"
 	"testing"
+	"time"
 )
 
 func assertHelper(t *testing.T, expected, actual *SaleChannelStatus) {
@@ -647,4 +650,114 @@ func TestNormalInventory_Sync(t *testing.T) {
 			ChildHoldCfg:  0,
 		}, invent1.Status(&ch3))
 	})
+}
+
+func TestNormalInventory_SafeDec(t *testing.T) {
+	lf := lockx.NewLocalLockerFactory()
+	ch1 := "123"
+	ch2 := "456"
+	ch3 := "789"
+	invent1 := NewNormalInventory("TestNormalInventory_SafeDec", 1000, lf)
+	t.Run("初始化库存渠道", func(t *testing.T) {
+		invent1.NewChannel(&ch1, NewStoreStrategy(Share(), Hold(100)), nil)
+		invent1.NewChannel(&ch2, NewStoreStrategy(Share(), Hold(200)), nil)
+		invent1.NewChannel(&ch3, NewStoreStrategy(Share()), nil)
+
+		status := invent1.Status(nil)
+		assert.Equal(t, 700, status.SelfRemaining)
+		status = invent1.Status(&ch1)
+		assert.Equal(t, 800, status.SelfRemaining)
+		status = invent1.Status(&ch2)
+		assert.Equal(t, 900, status.SelfRemaining)
+		status = invent1.Status(&ch3)
+		assert.Equal(t, 700, status.SelfRemaining)
+	})
+
+	rand.Seed(time.Now().Unix())
+
+	decHelper := func(ch *string, num int, hasErr bool, wait *sync.WaitGroup) {
+		errNum := 0
+		for i := 1; i <= num; i++ {
+			_, err := invent1.SafeDec(ch, i)
+			if err != nil {
+				errNum += 1
+			}
+		}
+		if hasErr {
+			assert.Less(t, 0, errNum)
+		} else {
+			assert.Equal(t, 0, errNum)
+
+		}
+		wait.Done()
+	}
+
+	var chList = []*string{nil, &ch1, &ch2}
+	//                      0     1     2
+	//                      3     4     5
+	//                      6     7     8
+	//                      9
+	wait := &sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wait.Add(1)
+		go decHelper(chList[i%len(chList)], 10, false, wait)
+	}
+	wait.Wait()
+
+	assertHelper(t, &SaleChannelStatus{
+		Max:           1000,
+		SelfRemaining: 1000 - 10*55 - (200 - 3*55),
+		SelfSales:     4 * 55,
+		SelfHoldCfg:   0,
+		SelfHoldRem:   0,
+		ChildSales:    6 * 55,
+		ChildHoldCfg:  300,
+		ChildHoldRem:  200 - 3*55,
+	}, invent1.Status(nil))
+	assertHelper(t, &SaleChannelStatus{
+		Max:           1000,
+		SelfRemaining: 1000 - 10*55 - (200 - 3*55),
+		SelfSales:     3 * 55,
+		SelfHoldCfg:   100,
+		SelfHoldRem:   0,
+		ChildSales:    0,
+		ChildHoldRem:  0,
+		ChildHoldCfg:  0,
+	}, invent1.Status(&ch1))
+	assertHelper(t, &SaleChannelStatus{
+		Max:           1000,
+		SelfRemaining: 1000 - 10*55,
+		SelfSales:     3 * 55,
+		SelfHoldCfg:   200,
+		SelfHoldRem:   200 - 3*55,
+		ChildSales:    0,
+		ChildHoldRem:  0,
+		ChildHoldCfg:  0,
+	}, invent1.Status(&ch2))
+	assertHelper(t, &SaleChannelStatus{
+		Max:           1000,
+		SelfRemaining: 1000 - 10*55 - (200 - 3*55),
+		SelfSales:     0,
+		SelfHoldCfg:   0,
+		SelfHoldRem:   0,
+		ChildSales:    0,
+		ChildHoldRem:  0,
+		ChildHoldCfg:  0,
+	}, invent1.Status(&ch3))
+
+	for i := 0; i < 20; i++ {
+		wait.Add(1)
+		go decHelper(chList[i%len(chList)], 500, true, wait)
+	}
+	wait.Wait()
+
+	actual := invent1.Status(nil)
+	assert.Equal(t, 1000, actual.Max, "总数")
+	assert.LessOrEqual(t, 0, actual.SelfRemaining, "渠道剩余数")
+	assert.GreaterOrEqual(t, 1000, actual.SelfSales+actual.ChildSales, "渠道售卖数")
+	assert.Equal(t, 1000, actual.SelfSales+actual.ChildSales+actual.SelfRemaining+actual.ChildHoldRem, "渠道售卖数")
+	assert.Equal(t, 0, actual.SelfHoldCfg, "渠道占用配置数")
+	assert.Equal(t, 0, actual.SelfHoldRem, "渠道占用剩余数")
+	assert.Equal(t, 300, actual.ChildHoldCfg, "子渠道占用配置数")
+	assert.LessOrEqual(t, 0, actual.ChildHoldRem, "子渠道占用剩余总数")
 }
