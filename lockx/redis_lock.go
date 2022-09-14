@@ -41,9 +41,7 @@ type RedisLockerFactory struct {
 // May return ErrNotObtained if not successful.
 func (rlf *RedisLockerFactory) Mutex(ctx context.Context, options ...Option) (Locker, error) {
 	// meta
-	meta := &LockerMeta{
-		retryStrategy: LimitRetry(LinearBackoff(50*time.Millisecond), 60),
-	}
+	meta := &LockerMeta{}
 	for _, opt := range options {
 		opt(meta)
 	}
@@ -70,9 +68,7 @@ func (rlf *RedisLockerFactory) Mutex(ctx context.Context, options ...Option) (Lo
 // MutexL2 获取针对相同的 key 优化的二级锁
 func (rlf *RedisLockerFactory) MutexL2(ctx context.Context, options ...Option) (Locker, error) {
 	// meta
-	meta := &LockerMeta{
-		retryStrategy: LimitRetry(LinearBackoff(50*time.Millisecond), 60),
-	}
+	meta := &LockerMeta{}
 	for _, opt := range options {
 		opt(meta)
 	}
@@ -137,7 +133,7 @@ const (
 	// 删除锁
 	luaRelease = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`
 	// 以毫秒为单位返回 key 的剩余过期时间
-	luaPTTL    = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pttl", KEYS[1]) else return -3 end`
+	luaPTTL = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("pttl", KEYS[1]) else return -3 end`
 )
 
 var (
@@ -164,35 +160,19 @@ type redisLocker struct {
 // Lock 加锁
 func (rl *redisLocker) Lock() error {
 	value := rl.value
-	retry := rl.meta.retryStrategy
-
-	var timer <-chan struct{}
-	for deadline := time.Now().Add(rl.meta.ttl); time.Now().Before(deadline); {
-
+	err := rl.meta.retry().Run(func() (any, error) {
 		ok, err := rl.obtain(rl.meta.key, value, rl.meta.ttl)
 		if err != nil {
-			return err
+			return nil, err
 		} else if ok {
 			// 加锁成功
 			rl.startMonitor()
-			return nil
+			return nil, nil
+		} else {
+			return nil, errors.New("ok = false")
 		}
-
-		backoff := retry.NextBackoff()
-		if backoff < 1 {
-			break
-		}
-
-		timer = rl.tw.After(backoff)
-
-		select {
-		case <-rl.ctx.Done():
-			return rl.ctx.Err()
-		case <-timer:
-		}
-	}
-
-	return ErrNotObtained
+	})
+	return err
 }
 
 func (rl *redisLocker) obtain(key, value string, ttl time.Duration) (bool, error) {
