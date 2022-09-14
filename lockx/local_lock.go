@@ -19,7 +19,7 @@ type LocalLockerFactory struct {
 var once sync.Once
 var localLockerFactory LockerFactory
 
-//NewLocalLockerFactory 获取本地所工厂，单例模式
+// NewLocalLockerFactory 获取本地所工厂，单例模式
 func NewLocalLockerFactory() LockerFactory {
 	once.Do(func() {
 		localLockerFactory = &LocalLockerFactory{
@@ -66,7 +66,6 @@ func (llf *LocalLockerFactory) RWMutex(ctx context.Context, options ...Option) (
 
 func (llf *LocalLockerFactory) lockerMeta(ctx context.Context, mtx sync.Locker, options ...Option) *LockerMeta {
 	meta := new(LockerMeta)
-	meta.retryStrategy = NoRetry()
 	for _, opt := range options {
 		opt(meta)
 	}
@@ -80,7 +79,7 @@ func (llf *LocalLockerFactory) lockerMeta(ctx context.Context, mtx sync.Locker, 
 	return meta
 }
 
-//Del 删除一个锁
+// Del 删除一个锁
 func (llf *LocalLockerFactory) Del(key string) {
 	llf.mutex.Lock()
 	defer llf.mutex.Unlock()
@@ -100,13 +99,13 @@ type localLocker struct {
 	mtx     sync.Locker
 }
 
-//Lock 加锁
+// Lock 加锁
 func (ll *localLocker) Lock() error {
 	ll.mtx.Lock()
 	return nil
 }
 
-//Unlock 解锁
+// Unlock 解锁
 func (ll *localLocker) Unlock() error {
 	if ll.factory != nil {
 		ll.factory.Del(ll.key)

@@ -31,9 +31,8 @@ type LockerFactory interface {
 
 // LockerMeta 锁配置元数据
 type LockerMeta struct {
-	key          string
-	ttl          time.Duration
-	retryFactory func() *retry.Executor
+	key string
+	ttl time.Duration
 }
 
 func (m *LockerMeta) retry() *retry.Executor {
